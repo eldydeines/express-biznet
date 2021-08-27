@@ -25,6 +25,7 @@ router.get('/:id', async (req, res, next) => {
                                         FROM invoices 
                                         INNER JOIN companies ON invoices.comp_code = companies.code
                                         WHERE invoices.id=$1`, [id]);
+
         if (results.rows.length === 0) {
             throw new ExpressError(`Can't find invoice with id: ${id}`, 404)
         }
@@ -47,18 +48,32 @@ router.post('/', async (req, res, next) => {
 });
 
 //Updates an invoice. If invoice cannot be found, returns a 404.
-//Needs to be passed in a JSON body of {amt}
+//Needs to be passed in a JSON body of {amt, paid}
 //Returns: {invoice: {id, comp_code, amt, paid, add_date, paid_date}}
 router.put("/:id", async (req, res, next) => {
     try {
         const id = req.params.id;
-        const { amt } = req.body;
-        const result = await db.query('UPDATE invoices SET amt=$1 WHERE id = $2 RETURNING id, comp_code, amt, paid, add_date, paid_date', [amt, id]);
+        const { amt, paid } = req.body;
+
+        let invResult = await db.query(`SELECT paid_date FROM invoices WHERE invoices.id=$1`, [id]);
+        let paid_date = invResult.rows[0].paid_date;
+
+        if (paid == true) {
+            paid_date = new Date().toISOString().slice(0, 10);
+        }
+        else if (paid == false) {
+            paid_date = null;
+        }
+        else {
+            paid_date = paid_date;
+        }
+
+        const result = await db.query('UPDATE invoices SET amt=$1, paid_date=$3, paid=$4 WHERE id = $2 RETURNING id, comp_code, amt, paid, add_date, paid_date', [amt, id, paid_date, paid]);
 
         if (result.rows.length === 0) {
             throw new ExpressError(`Can't find invoice to update with id: ${id}`, 404)
         } else {
-            return res.json({ company: result.rows[0] });
+            return res.json({ invoice: result.rows[0] });
         }
     } catch (err) {
         return next(err);
